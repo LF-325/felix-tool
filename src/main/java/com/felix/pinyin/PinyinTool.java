@@ -7,6 +7,11 @@ import net.sourceforge.pinyin4j.format.HanyuPinyinToneType;
 import net.sourceforge.pinyin4j.format.HanyuPinyinVCharType;
 import net.sourceforge.pinyin4j.format.exception.BadHanyuPinyinOutputFormatCombination;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -16,47 +21,53 @@ public class PinyinTool {
 
     // 多音字词典：存储词组到拼音的映射
     private static final Map<String, String> PHRASE_DICT = new HashMap<>();
-    static {
-        // 添加常见多音字词组映射（格式：词组=拼音）
-        addPhrase("重庆", "chóng qìng");
-        addPhrase("重要", "zhòng yào");
-        addPhrase("重复", "chóng fù");
-        addPhrase("重量", "zhòng liàng");
-        addPhrase("银行", "yín háng");
-        addPhrase("行动", "xíng dòng");
-        addPhrase("行业", "háng yè");
-        addPhrase("长度", "cháng dù");
-        addPhrase("长大", "zhǎng dà");
-        addPhrase("行长", "háng zhǎng");
-        addPhrase("重复", "chóng fù");
-        addPhrase("重阳", "chóng yáng");
-        addPhrase("重心", "zhòng xīn");
-        addPhrase("行长", "háng zhǎng");
-        addPhrase("行李", "xíng li");
-        addPhrase("长久", "cháng jiǔ");
-        addPhrase("长辈", "zhǎng bèi");
-        // 可以继续添加更多词组...
-    }
-
     // 单字多音字词典（当词组未匹配时使用）
     private static final Map<String, List<String>> CHAR_DICT = new HashMap<>();
+
     static {
-        addCharPolyphone("重", "chóng");
-        addCharPolyphone("重", "zhòng");
-        addCharPolyphone("行", "xíng");
-        addCharPolyphone("行", "háng");
-        addCharPolyphone("长", "cháng");
-        addCharPolyphone("长", "zhǎng");
-        addCharPolyphone("乐", "lè");
-        addCharPolyphone("乐", "yuè");
+        // 从资源文件加载词典
+        loadDictFromResource("phrase_dict.txt", "char_dict.txt");
     }
 
-    private static void addPhrase(String phrase, String pinyin) {
-        PHRASE_DICT.put(phrase, pinyin);
-    }
+    /**
+     * 从资源文件加载词典
+     */
+    private static void loadDictFromResource(String phraseFile, String charFile) {
+        // 加载词组词典
+        try (InputStream is = PinyinTool.class.getClassLoader().getResourceAsStream(phraseFile);
+             BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                line = line.trim();
+                if (line.isEmpty() || line.startsWith("#")) continue;
+                String[] parts = line.split("=", 2);
+                if (parts.length == 2) {
+                    PHRASE_DICT.put(parts[0].trim(), parts[1].trim());
+                }
+            }
+        } catch (IOException | NullPointerException e) {
+            System.err.println("加载词组词典失败: " + e.getMessage());
+        }
 
-    private static void addCharPolyphone(String word, String pinyin) {
-        CHAR_DICT.computeIfAbsent(word, k -> new ArrayList<>()).add(pinyin);
+        // 加载单字多音字词典
+        try (InputStream is = PinyinTool.class.getClassLoader().getResourceAsStream(charFile);
+             BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                line = line.trim();
+                if (line.isEmpty() || line.startsWith("#")) continue;
+                String[] parts = line.split("=", 2);
+                if (parts.length == 2) {
+                    String word = parts[0].trim();
+                    String[] pinyins = parts[1].split(",");
+                    for (String pinyin : pinyins) {
+                        CHAR_DICT.computeIfAbsent(word, k -> new ArrayList<>()).add(pinyin.trim());
+                    }
+                }
+            }
+        } catch (IOException | NullPointerException e) {
+            System.err.println("加载单字词典失败: " + e.getMessage());
+        }
     }
 
     /**
@@ -185,4 +196,5 @@ public class PinyinTool {
             System.out.println(test + " => " + toPinyinWithTone(test));
         }
     }
+
 }

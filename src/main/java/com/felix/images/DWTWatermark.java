@@ -4,6 +4,9 @@ import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
@@ -254,7 +257,7 @@ public class DWTWatermark {
     }
 
     // 工具方法
-    private static String toBinaryString(String text) {
+    public static String toBinaryString(String text) {
         StringBuilder binary = new StringBuilder();
         for (char c : text.toCharArray()) {
             // 确保每个字符转换为8位二进制
@@ -283,6 +286,135 @@ public class DWTWatermark {
         return Math.max(0, Math.min(255, value));
     }
 
+    /**
+     * 基于流的水印嵌入方法
+     * 
+     * @param imageInputStream 原始图像输入流
+     * @param watermark 水印文本
+     * @return 嵌入水印后的图像输出流
+     * @throws IOException 如果图像流处理发生错误
+     */
+    public static OutputStream embed(InputStream imageInputStream, String watermark) throws IOException {
+        BufferedImage image = ImageIO.read(imageInputStream);
+        int width = image.getWidth();
+        int height = image.getHeight();
+
+        // 使用Base64编码水印文本
+        String encodedWatermark = Base64.getEncoder().encodeToString(
+                watermark.getBytes(StandardCharsets.UTF_8));
+        String watermarkBinary = toBinaryString(encodedWatermark);
+
+        int watermarkLength = watermarkBinary.length();
+        System.out.println("Base64编码后水印: " + encodedWatermark);
+        System.out.println("水印二进制长度: " + watermarkLength + " 位");
+
+        // 计算最大容量
+        int subbandWidth = width / 2;
+        int subbandHeight = height / 2;
+        int capacity = subbandWidth * subbandHeight;
+        System.out.println("图像容量: " + capacity + " 位");
+
+        if (watermarkLength > capacity) {
+            throw new IllegalArgumentException("水印信息过长，最大容量: " + capacity + " 位");
+        }
+
+        // 将图像转换为YUV颜色空间
+        double[][][] yuvImage = convertRGBtoYUV(image);
+        double[][] yChannel = yuvImage[0];
+
+        // 应用DWT到Y通道
+        double[][][] subbands = applyDWT(yChannel);
+
+        // 在HL子带嵌入水印
+        double[][] hl = subbands[1];
+        int bitIndex = 0;
+        for (int y = 0; y < hl.length; y++) {
+            for (int x = 0; x < hl[0].length; x++) {
+                if (bitIndex >= watermarkLength) break;
+
+                char bit = watermarkBinary.charAt(bitIndex);
+                double delta = 12.0; // 增加嵌入强度
+
+                // 使用绝对值+符号法确保提取可靠性
+                double absValue = Math.abs(hl[y][x]);
+                if (bit == '1') {
+                    hl[y][x] = absValue + delta; // 正数表示1
+                } else {
+                    hl[y][x] = -(absValue + delta); // 负数表示0
+                }
+                bitIndex++;
+            }
+        }
+        System.out.println("实际嵌入位数: " + bitIndex);
+
+        // 应用逆DWT
+        double[][] reconstructedY = applyIDWT(subbands);
+
+        // 更新Y通道
+        yuvImage[0] = reconstructedY;
+
+        // 转换回RGB
+        BufferedImage watermarkedImage = convertYUVtoRGB(yuvImage, width, height);
+
+        // 将结果写入输出流
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        ImageIO.write(watermarkedImage, "png", outputStream);
+        return outputStream;
+    }
+    
+    /**
+     * 从流中提取水印
+     * 
+     * @param watermarkedImageStream 嵌入水印的图像输入流
+     * @param binaryLength 水印二进制长度
+     * @return 提取的水印文本
+     * @throws IOException 如果图像流处理发生错误
+     */
+    public static String extract(InputStream watermarkedImageStream, int binaryLength) throws IOException {
+        BufferedImage image = ImageIO.read(watermarkedImageStream);
+        int width = image.getWidth();
+        int height = image.getHeight();
+
+        // 将图像转换为YUV
+        double[][][] yuvImage = convertRGBtoYUV(image);
+
+        // 应用DWT到Y通道
+        double[][][] subbands = applyDWT(yuvImage[0]);
+
+        // 从HL子带提取水印
+        double[][] hl = subbands[1];
+        StringBuilder extractedBinary = new StringBuilder();
+
+        // 提取水印位
+        for (int y = 0; y < hl.length; y++) {
+            for (int x = 0; x < hl[0].length; x++) {
+                // 使用符号检测水印位（正数=1，负数=0）
+                char bit = hl[y][x] > 0 ? '1' : '0';
+                extractedBinary.append(bit);
+            }
+        }
+
+        System.out.println("提取的总位数: " + extractedBinary.length());
+
+        // 截取有效长度
+        String validBinary = extractedBinary.substring(0, Math.min(binaryLength, extractedBinary.length()));
+        System.out.println("截取的有效位数: " + validBinary.length());
+
+        // 转换为Base64字符串
+        String base64Str = binaryToString(validBinary);
+        System.out.println("Base64字符串: " + base64Str);
+
+        try {
+            // 解码Base64
+            byte[] decodedBytes = Base64.getDecoder().decode(base64Str);
+            return new String(decodedBytes, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            System.err.println("Base64解码错误: " + e.getMessage());
+            // 尝试修复填充问题
+            return repairBase64Decoding(base64Str);
+        }
+    }
+    
     public static void main(String[] args) {
         try {
             File original = new File("D:\\data\\watermark\\wm.jpg");
@@ -298,10 +430,10 @@ public class DWTWatermark {
             int binaryLength = toBinaryString(base64Original).length();
             System.out.println("Base64二进制长度: " + binaryLength + " 位");
 
-            // DWT水印
+            // 文件版本 - DWT水印
             File dwtOutput = new File("D:\\data\\watermark\\wm-dwt.png");
             embed(original, dwtOutput, watermark);
-            System.out.println("水印嵌入完成");
+            System.out.println("文件版本水印嵌入完成");
 
             // 提取水印
             String extractedText = extract(dwtOutput, binaryLength);
@@ -314,6 +446,19 @@ public class DWTWatermark {
             System.out.println("原始水印: " + watermark);
             System.out.println("提取水印: " + extractedText);
             System.out.println("匹配状态: " + watermark.equals(extractedText));
+            
+            // 流版本测试
+            System.out.println("\n开始测试基于流的水印嵌入和提取...");
+            java.io.FileInputStream fis = new java.io.FileInputStream(original);
+            OutputStream outputStream = embed(fis, watermark);
+            System.out.println("流版本水印嵌入完成");
+            
+            // 从流中提取水印
+            java.io.ByteArrayInputStream watermarkedStream = new java.io.ByteArrayInputStream(
+                ((ByteArrayOutputStream)outputStream).toByteArray());
+            String extractedFromStream = extract(watermarkedStream, binaryLength);
+            System.out.println("从流中提取的水印文本: " + extractedFromStream);
+            System.out.println("流版本匹配状态: " + watermark.equals(extractedFromStream));
 
         } catch (IOException e) {
             e.printStackTrace();
