@@ -1,6 +1,7 @@
 package com.felix.watermark.metadata.images;
 
 
+import com.felix.watermark.metadata.AIGCMetadata;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 

@@ -1,5 +1,7 @@
 package com.felix.watermark.metadata.images;
 
+import com.felix.watermark.metadata.AIGCMetadata;
+
 import java.io.File;
 
 /**
