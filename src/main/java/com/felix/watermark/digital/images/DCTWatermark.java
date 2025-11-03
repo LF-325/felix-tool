@@ -1,4 +1,4 @@
-package com.felix.images;
+package com.felix.watermark.digital.images;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;

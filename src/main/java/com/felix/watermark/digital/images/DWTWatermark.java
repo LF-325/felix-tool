@@ -1,4 +1,4 @@
-package com.felix.images;
+package com.felix.watermark.digital.images;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -418,7 +418,7 @@ public class DWTWatermark {
     public static void main(String[] args) {
         try {
             File original = new File("D:\\data\\watermark\\wm.jpg");
-            String watermark = "安全水印@2023";
+            String watermark = "安全水印@2023@我要看看能够嵌入多大内容水印";
 
             // 计算原始水印的Base64编码
             String base64Original = Base64.getEncoder().encodeToString(

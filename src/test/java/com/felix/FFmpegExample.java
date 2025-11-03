@@ -1,4 +1,6 @@
-package com.felix.media;
+package com.felix;
+
+import com.felix.media.FFmpegUtil;
 
 import java.util.Arrays;
 import java.util.List;

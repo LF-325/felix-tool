@@ -1,4 +1,4 @@
-package com.felix.images;
+package com.felix.watermark.digital.images;
 
 import net.coobird.thumbnailator.Thumbnails;
 import net.coobird.thumbnailator.geometry.Position;
