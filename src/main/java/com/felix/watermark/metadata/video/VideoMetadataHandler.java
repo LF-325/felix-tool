@@ -3,6 +3,9 @@ package com.felix.watermark.metadata.video;
 import com.alibaba.fastjson.JSON;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.felix.utils.OperatingSystem;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.util.ArrayList;
@@ -17,29 +20,37 @@ import java.util.Scanner;
  */
 public class VideoMetadataHandler {
 
+    private static final Logger logger = LoggerFactory.getLogger(VideoMetadataHandler.class);
+
     private static final String FFMPEG_DIR = "";
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * 添加隐式元数据标识到视频文件
-     * @param inputPath 输入文件路径
+     *
+     * @param inputPath  输入文件路径
      * @param outputPath 输出文件路径
-     * @param metadata 隐式标识信息
+     * @param metadata   隐式标识信息
      * @return 处理成功返回true，否则返回false
      */
     public static boolean addStealthMetadata(String inputPath, String outputPath, AIGCMetadata metadata) {
         try {
             // 构建FFmpeg命令，确保参数顺序正确
             List<String> command = new ArrayList<>();
-            command.add(FFMPEG_DIR+"ffmpeg");
+            command.add(FFMPEG_DIR + "ffmpeg");
             command.add("-i");
             command.add(inputPath);
 
             // 添加标准元数据字段
             command.add("-metadata");
             // 使用适用于MP4/MOV格式的JSON格式
-            command.add(escapeMetadataValue("AIGC=" + metadata.toVideoJsonString()));
+            if (OperatingSystem.isWindows())
+            {
+                command.add(escapeMetadataValue("AIGC=" + metadata.toVideoJsonString()));
+            }else{
+                command.add("AIGC=" + metadata.toVideoJsonString());
+            }
 
             command.add("-movflags");
             command.add("use_metadata_tags");
@@ -47,12 +58,14 @@ public class VideoMetadataHandler {
             // 使用流复制，不重新编码以保持质量
             command.add("-c");
             command.add("copy");
-            
+
             // 覆盖输出文件
             command.add("-y");
-            
+
             // 输出文件必须是最后一个参数
             command.add(outputPath);
+
+            logger.info("执行命令: {}", String.join(" ", command));
 
             // 执行命令
             ProcessBuilder pb = new ProcessBuilder(command);
@@ -72,18 +85,219 @@ public class VideoMetadataHandler {
             boolean success = exitCode == 0;
 
             if (!success) {
-                System.err.println("FFmpeg执行失败，退出码: " + exitCode);
-                System.err.println("输出: " + output.toString());
+                logger.error("FFmpeg执行失败，退出码: {}", exitCode);
+                logger.error("输出: {}",output.toString());
             }
 
             return success;
 
         } catch (IOException | InterruptedException e) {
-            System.err.println("添加元数据时发生错误: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("添加元数据时发生错误", e);
             return false;
         }
     }
+
+    /**
+     * 添加隐式元数据标识到视频文件并返回视频流
+     * 适用于需要直接获取处理后的视频流而不生成本地文件的场景
+     *
+     * @param inputPath  输入文件路径
+     * @param metadata   隐式标识信息
+     * @return 包含视频流的VideoStreamResult对象，包含进程和输入流
+     */
+    public static VideoStreamResult addStealthMetadataToStream(String inputPath, AIGCMetadata metadata) {
+        try {
+            // 构建FFmpeg命令，输出到标准输出
+            List<String> command = new ArrayList<>();
+            command.add(FFMPEG_DIR + "ffmpeg");
+            command.add("-i");
+            command.add(inputPath);
+
+            // 添加标准元数据字段
+            command.add("-metadata");
+            if (OperatingSystem.isWindows()) {
+                command.add(escapeMetadataValue("AIGC=" + metadata.toVideoJsonString()));
+            } else {
+                command.add("AIGC=" + metadata.toVideoJsonString());
+            }
+
+            command.add("-movflags");
+            command.add("use_metadata_tags");
+
+            // 使用流复制，不重新编码以保持质量
+            command.add("-c");
+            command.add("copy");
+
+            // 输出到标准输出，格式为MP4
+            command.add("-f");
+            command.add("mp4");
+            command.add("-");
+
+            logger.info("执行流处理命令: {}", String.join(" ", command));
+
+            // 执行命令
+            ProcessBuilder pb = new ProcessBuilder(command);
+            // 重定向错误流到标准错误
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+
+            // 返回包含进程和输入流的结果对象
+            return new VideoStreamResult(process, process.getInputStream());
+
+        } catch (IOException e) {
+            logger.error("添加元数据到视频流时发生错误", e);
+            return null;
+        }
+    }
+
+    /**
+     * 添加隐式元数据标识到输入流并返回输出流
+     * 适用于流式处理场景
+     *
+     * @param inputStream 输入视频流
+     * @param metadata    隐式标识信息
+     * @param inputFormat 输入格式（如mp4, avi等）
+     * @return 包含视频流的VideoStreamResult对象
+     */
+    public static VideoStreamResult addStealthMetadataToStream(InputStream inputStream, AIGCMetadata metadata, String inputFormat) {
+        try {
+            // 构建FFmpeg命令，从标准输入读取，输出到标准输出
+            List<String> command = new ArrayList<>();
+            command.add(FFMPEG_DIR + "ffmpeg");
+
+            // 指定输入格式和从标准输入读取
+            command.add("-f");
+            command.add(inputFormat);
+            command.add("-i");
+            command.add("-");
+
+            // 添加标准元数据字段
+            command.add("-metadata");
+            if (OperatingSystem.isWindows()) {
+                command.add(escapeMetadataValue("AIGC=" + metadata.toVideoJsonString()));
+            } else {
+                command.add("AIGC=" + metadata.toVideoJsonString());
+            }
+
+            command.add("-movflags");
+            command.add("use_metadata_tags");
+
+            // 使用流复制，不重新编码以保持质量
+            command.add("-c");
+            command.add("copy");
+
+            // 输出到标准输出，格式为MP4
+            command.add("-f");
+            command.add("mp4");
+            command.add("-");
+
+            logger.info("执行流处理命令: {}", String.join(" ", command));
+
+            // 执行命令
+            ProcessBuilder pb = new ProcessBuilder(command);
+            // 重定向错误流到标准错误
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+
+            // 启动线程将输入流写入FFmpeg进程
+            final Process finalProcess = process;
+            Thread inputThread = new Thread(() -> {
+                try (OutputStream processInput = finalProcess.getOutputStream()) {
+                    byte[] buffer = new byte[8192];
+                    int bytesRead;
+                    while ((bytesRead = inputStream.read(buffer)) != -1) {
+                        processInput.write(buffer, 0, bytesRead);
+                    }
+                    processInput.flush();
+                } catch (IOException e) {
+                    logger.error("写入FFmpeg输入流时发生错误", e);
+                } finally {
+                    try {
+                        inputStream.close();
+                    } catch (IOException e) {
+                        logger.error("关闭输入流时发生错误", e);
+                    }
+                }
+            });
+            inputThread.start();
+
+            // 返回包含进程和输入流的结果对象
+            return new VideoStreamResult(process, process.getInputStream());
+
+        } catch (IOException e) {
+            logger.error("添加元数据到视频流时发生错误", e);
+            return null;
+        }
+    }
+
+    /**
+     * 视频流处理结果类
+     * 封装FFmpeg进程和输出流，提供资源清理方法
+     */
+    public static class VideoStreamResult {
+        private Process process;
+        private InputStream videoStream;
+        private boolean consumed = false;
+
+        public VideoStreamResult(Process process, InputStream videoStream) {
+            this.process = process;
+            this.videoStream = videoStream;
+        }
+
+        public InputStream getVideoStream() {
+            if (consumed) {
+                throw new IllegalStateException("视频流已经被消费，不能重复使用");
+            }
+            consumed = true;
+            return videoStream;
+        }
+
+        /**
+         * 等待处理完成并获取退出码
+         * @return 进程退出码
+         */
+        public int waitForCompletion() throws InterruptedException {
+            return process.waitFor();
+        }
+
+        /**
+         * 检查进程是否正在运行
+         * @return true如果进程还在运行
+         */
+        public boolean isAlive() {
+            try {
+                process.exitValue();
+                return false;
+            } catch (IllegalThreadStateException e) {
+                return true;
+            }
+        }
+
+        /**
+         * 强制终止处理进程
+         */
+        public void destroy() {
+            process.destroy();
+            try {
+                if (videoStream != null) {
+                    videoStream.close();
+                }
+            } catch (IOException e) {
+                System.err.println("关闭视频流时发生错误: " + e.getMessage());
+            }
+        }
+
+        /**
+         * 安全关闭所有资源
+         */
+        public void close() {
+            destroy();
+            if (process.isAlive()) {
+                process.destroyForcibly();
+            }
+        }
+    }
+
 
     /**
      * 转义元数据值中的特殊字符
@@ -307,6 +521,36 @@ public class VideoMetadataHandler {
         }else{
             System.out.println("元数据为空");
         }
+
+        // 测试文件到流的方法
+        System.out.println("测试文件到流处理方法:");
+        VideoStreamResult streamResult = VideoMetadataHandler.addStealthMetadataToStream(inputFile, metadata);
+        if (streamResult != null) {
+            try (InputStream videoStream = streamResult.getVideoStream();
+                 FileOutputStream fileOutput = new FileOutputStream("D:\\data\\watermark\\bg-stream-output.mp4")) {
+
+                // 将视频流写入文件（实际使用时可以直接处理流）
+                byte[] buffer = new byte[8192];
+                int bytesRead;
+                while ((bytesRead = videoStream.read(buffer)) != -1) {
+                    fileOutput.write(buffer, 0, bytesRead);
+                }
+                System.out.println("视频流处理完成并保存到文件");
+
+                // 等待进程完成
+                int exitCode = streamResult.waitForCompletion();
+                System.out.println("FFmpeg进程退出码: " + exitCode);
+
+            } catch (IOException | InterruptedException e) {
+                System.err.println("处理视频流时发生错误: " + e.getMessage());
+                e.printStackTrace();
+            } finally {
+                streamResult.close();
+            }
+        } else {
+            System.out.println("视频流处理失败");
+        }
+
     }
 
 }

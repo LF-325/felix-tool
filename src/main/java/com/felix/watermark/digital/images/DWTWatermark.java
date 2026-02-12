@@ -10,8 +10,22 @@ import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
+/**
+ * 基于离散小波变换(DWT)的数字水印工具类
+ * @author 刘飞
+ * 实现了在图像中嵌入和提取文本水印的功能
+ * 支持文件和流两种操作方式
+ */
 public class DWTWatermark {
 
+    /**
+     * 在图像文件中嵌入水印
+     * 
+     * @param imageFile 原始图像文件
+     * @param outputFile 嵌入水印后的输出文件
+     * @param watermark 要嵌入的水印文本
+     * @throws IOException 如果文件读写过程中发生错误
+     */
     public static void embed(File imageFile, File outputFile, String watermark) throws IOException {
         BufferedImage image = ImageIO.read(imageFile);
         int width = image.getWidth();
@@ -78,7 +92,14 @@ public class DWTWatermark {
         ImageIO.write(watermarkedImage, "png", outputFile);
     }
 
-    // 提取水印
+    /**
+     * 从图像文件中提取水印
+     * 
+     * @param watermarkedImage 嵌入水印的图像文件
+     * @param binaryLength 水印二进制长度
+     * @return 提取的水印文本
+     * @throws IOException 如果文件读取过程中发生错误
+     */
     public static String extract(File watermarkedImage, int binaryLength) throws IOException {
         BufferedImage image = ImageIO.read(watermarkedImage);
         int width = image.getWidth();
@@ -124,7 +145,12 @@ public class DWTWatermark {
         }
     }
 
-    // 修复Base64解码问题
+    /**
+     * 修复Base64解码时的填充问题
+     * 
+     * @param base64Str 需要修复的Base64字符串
+     * @return 修复后的解码结果或错误信息
+     */
     private static String repairBase64Decoding(String base64Str) {
         // 尝试添加填充字符
         while (base64Str.length() % 4 != 0) {
@@ -140,7 +166,12 @@ public class DWTWatermark {
         }
     }
 
-    // 应用一级DWT（Haar小波）
+    /**
+     * 应用一级离散小波变换(Haar小波)
+     * 
+     * @param data 输入数据矩阵
+     * @return 四个子带系数数组[LL, HL, LH, HH]
+     */
     private static double[][][] applyDWT(double[][] data) {
         int width = data[0].length;
         int height = data.length;
@@ -173,7 +204,12 @@ public class DWTWatermark {
         return new double[][][]{ll, hl, lh, hh};
     }
 
-    // 应用一级逆DWT
+    /**
+     * 应用一级逆离散小波变换
+     * 
+     * @param subbands 四个子带系数数组[LL, HL, LH, HH]
+     * @return 重构后的数据矩阵
+     */
     private static double[][] applyIDWT(double[][][] subbands) {
         double[][] ll = subbands[0];
         double[][] hl = subbands[1];
@@ -205,7 +241,12 @@ public class DWTWatermark {
         return data;
     }
 
-    // RGB转YUV
+    /**
+     * 将RGB图像转换为YUV颜色空间
+     * 
+     * @param image 输入的RGB图像
+     * @return YUV三个通道的数据数组[Y, U, V]
+     */
     private static double[][][] convertRGBtoYUV(BufferedImage image) {
         int width = image.getWidth();
         int height = image.getHeight();
@@ -230,7 +271,14 @@ public class DWTWatermark {
         return new double[][][]{y, u, v};
     }
 
-    // YUV转RGB
+    /**
+     * 将YUV颜色空间转换为RGB图像
+     * 
+     * @param yuv YUV三个通道的数据数组[Y, U, V]
+     * @param width 图像宽度
+     * @param height 图像高度
+     * @return 转换后的RGB图像
+     */
     private static BufferedImage convertYUVtoRGB(double[][][] yuv, int width, int height) {
         BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
         double[][] y = yuv[0];
@@ -256,7 +304,12 @@ public class DWTWatermark {
         return image;
     }
 
-    // 工具方法
+    /**
+     * 将文本转换为二进制字符串
+     * 
+     * @param text 输入文本
+     * @return 二进制字符串表示
+     */
     public static String toBinaryString(String text) {
         StringBuilder binary = new StringBuilder();
         for (char c : text.toCharArray()) {
@@ -267,6 +320,12 @@ public class DWTWatermark {
         return binary.toString();
     }
 
+    /**
+     * 将二进制字符串转换为文本
+     * 
+     * @param binary 二进制字符串
+     * @return 转换后的文本
+     */
     private static String binaryToString(String binary) {
         StringBuilder text = new StringBuilder();
         // 每8位一组转换为字符
@@ -282,6 +341,12 @@ public class DWTWatermark {
         return text.toString();
     }
 
+    /**
+     * 将数值限制在0-255范围内
+     * 
+     * @param value 输入数值
+     * @return 限制后的数值
+     */
     private static int clamp(int value) {
         return Math.max(0, Math.min(255, value));
     }
@@ -415,6 +480,12 @@ public class DWTWatermark {
         }
     }
     
+    /**
+     * 主函数，用于测试水印嵌入和提取功能
+     * 包含文件版本和流版本的完整测试流程
+     * 
+     * @param args 命令行参数
+     */
     public static void main(String[] args) {
         try {
             File original = new File("D:\\data\\watermark\\wm.jpg");

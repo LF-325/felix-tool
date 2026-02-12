@@ -11,6 +11,7 @@ import java.io.ByteArrayOutputStream;
 
 /**
  * 基于LSB（最低有效位）的隐写术
+ * @author 刘飞
  * @Description:
  * 修改像素最低位
  * 对图像质量影响极小

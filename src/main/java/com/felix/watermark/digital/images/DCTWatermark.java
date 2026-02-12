@@ -10,6 +10,7 @@ import java.io.OutputStream;
 
 /**
  * 基于DCT（离散余弦变换）的数字水印
+ * @author 刘飞
  */
 public class DCTWatermark {
 
